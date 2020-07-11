@@ -5,13 +5,16 @@
 .DESCRIPTION
    <A detailed description of the script>
 .PARAMETER <paramName>
-   -jahr: Jahr für das die Dateien heruntergeladen werden sollen
-   -modus: "vollstaendig": alle Dateien eines Jahres 
-           "update":       alle ab der laufenden Woche bis zur zuletzt heruntergeladenen Wochendatei
+   -jahr:       Jahr für das die Dateien heruntergeladen werden sollen
+   -ParamDatei: Datei mit URLs der SENEC-Seiten, Dateipfade für Daten und die Anmeldeinformationen
+   -modus:      "vollstaendig": alle Dateien eines Jahres 
+                "update":       alle ab der laufenden Woche bis zur zuletzt heruntergeladenen Wochendatei
+		                        dabei wird die zuletzt heruntergeladene Datei erneut heruntergeladen, um die
+						        Vollständigkeit der Daten zu gewährleisten
 .EXAMPLE
    <An example of using the script>
 #>
-param([string]$jahr, [validateSet("vollstaendig", "update")][string]$modus)
+param([string]$jahr, [string]$ParamDatei, [validateSet("vollstaendig", "update")][string]$modus)
 
 
 function download_statistikdaten {
@@ -30,15 +33,49 @@ function download_statistikdaten {
 		$downloadError[0].errorRecord.exception
 		$downloadError[0].errorRecord.exception.Response | fl *
 	}
+	
+	# Datensätze sind evtl. unsortiert, daher vorsorglich sortieren. 
+	# sortiert wird nach 
+	# 1. Jahr, 2. Monat, 3. Tag, 4. Uhrzeit
+	# Die Spaltenüberschrift muss aber an erster Stelle bleiben
+	$x = Get-Content $zielDatei
+	$x1 = $x[0]
+	$x = $x | Select-Object -skip 1 | `
+		      sort -Property @{expression={$_.substring(6,4)}}, @{expression={$_.substring(3,2)}}, `
+			  @{expression={$_.substring(0,2)}}, @{expression={$_.substring(11,8)}}
+	($x1, $x) | Set-Content $zielDatei
 }
 
-$uri = "https://mein-senec.de/auth/login"
-$uriStatistik = "https://mein-senec.de/endkunde/#/0/statistischeDaten"
-$uriDownload = "https://mein-senec.de/endkunde/api/statistischeDaten/download"
+# Parameter überprüfen ---------------------------------
+$fehler = 0
+if ($ParamDatei -eq "" ) {
+	"XML-Datei mit URLs und Datenpfaden nicht angegeben."
+	$fehler++
+}	
+elseif (-not (Test-Path $ParamDatei)) {
+	"XML-Datei mit URLs und Datenpfaden existiert nicht: " + $ParamDatei
+	$fehler++
+}
 
-$datenPfad = "C:\Daten\Anwendungen\PhotovoltaikDaten\"
-$credentialDatei = "C:\Daten\allgemein\senecLogin.xml"
-$passwordDatei = "C:\Daten\allgemein\senecPW.txt"
+if ($jahr -eq $null-or $jahr -eq "") {
+	'Parameter "Jahr" nicht angegeben' 
+	$fehler++
+}
+
+if ($fehler -gt 0) {
+	exit
+}
+# Ende Parameter überprüfen -----------------------------
+
+# Parameterdatei einlesen und Datenpfade URLs und Login-Daten für SENEC-Homepage setzen.
+[xml]$datenpfade = Get-Content $ParamDatei
+$uri = $datenpfade.dataPathes.urls.urilogin
+$uriStatistik = $datenpfade.dataPathes.urls.uriStatistics
+$uriDownload = $datenpfade.dataPathes.urls.uriDownload
+
+$datenPfad = $datenpfade.dataPathes.folders.data
+$credentialDatei = $datenpfade.dataPathes.folders.credential
+$passwordDatei = $datenpfade.dataPathes.folders.password
 
 #Paramter für Download der Dateien
 $downloadParams = @{anlageNummer = '0'

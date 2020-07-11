@@ -1,17 +1,16 @@
 <#
 .SYNOPSIS
-   Lädt alle Statistikdateien der PV-Anlage eines Jahres herunter und speichert sie in einer Sammeldatei für das Jahr
+   erstellt aus den gewichteten Daten (senec-gewichten.ps1) je eine Datei auf Stunden-, Tages- und Monatsbasis
    
 .DESCRIPTION
    <A detailed description of the script>
 .PARAMETER <paramName>
-   -jahr: Jahr für das die Dateien heruntergeladen werden sollen
-   -modus: "vollstaendig": alle Dateien eines Jahres 
-           "update":       alle ab der laufenden Woche bis zur zuletzt heruntergeladenen Wochendatei
+   -paramDatei: Datei mit URLs der SENEC-Seiten, Dateipfade für Daten und die Anmeldeinformationen
+   -jahr:       Jahr für das die Dateien gewichtet werden sollen
 .EXAMPLE
    <An example of using the script>
 #>
-param([string]$jahr, [validateSet("vollstaendig", "update")][string]$modus)
+param([string]$jahr, [string]$paramdatei)
 
 class Datensatz {
 	[DateTime] $Zeitstempel
@@ -63,8 +62,30 @@ function ausgabeZusammensetzen {
 	return $ausgabeZeile
 }
 
+# Parameter überprüfen ---------------------------------
+$fehler = 0
+if ($paramDatei -eq "" ) {
+	"XML-Datei mit URLs und Datenpfaden nicht angegeben."
+	$fehler++
+}	
+elseif (-not (Test-Path $paramDatei)) {
+	"XML-Datei mit URLs und Datenpfaden existiert nicht: " + $paramDatei
+	$fehler++
+}
 
-$datenPfad = "C:\Daten\Anwendungen\PhotovoltaikDaten\Jahr$jahr\"
+if ($jahr -eq $null-or $jahr -eq "") {
+	'Parameter "Jahr" nicht angegeben' 
+	$fehler++
+}
+
+if ($fehler -gt 0) {
+	exit
+}
+# Ende Parameter überprüfen -----------------------------
+[xml]$datenpfade = Get-Content $ParamDatei
+$datenPfad = $datenpfade.dataPathes.folders.data + "\Jahr$jahr\"
+
+#$datenPfad = "C:\Daten\Anwendungen\PhotovoltaikDaten\Jahr$jahr\"
 $dateiMitGewichtung = $datenPfad + "jahr-" + $Jahr + "mitGewichtung.csv"
 $stundenDatei = $datenPfad + "Jahr-" + $Jahr + "-Stunde.csv"
 $tagesDatei = $datenPfad + "Jahr-" + $Jahr + "-Tag.csv"

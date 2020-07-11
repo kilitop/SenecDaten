@@ -16,13 +16,12 @@
 .DESCRIPTION
    <A detailed description of the script>
 .PARAMETER <paramName>
-   -jahr: Jahr für das die Dateien heruntergeladen werden sollen
-   -modus: "vollstaendig": alle Dateien eines Jahres 
-           "update":       alle ab der laufenden Woche bis zur zuletzt heruntergeladenen Wochendatei
+   -paramDatei: Datei mit URLs der SENEC-Seiten, Dateipfade für Daten und die Anmeldeinformationen
+   -jahr:       Jahr für das die Dateien gewichtet werden sollen
 .EXAMPLE
    <An example of using the script>
 #>
-param([string]$jahr, [validateSet("vollstaendig", "update")][string]$modus)
+param([String]$paramDatei, [string]$jahr)
 
 class Datensatz {
 	[DateTime] $zeitstempel 
@@ -59,6 +58,31 @@ function datensatzSplitten {
 	return $datensatz
 }
 
+# Parameter überprüfen ---------------------------------
+$fehler = 0
+if ($paramDatei -eq "" ) {
+	"XML-Datei mit URLs und Datenpfaden nicht angegeben."
+	$fehler++
+}	
+elseif (-not (Test-Path $paramDatei)) {
+	"XML-Datei mit URLs und Datenpfaden existiert nicht: " + $paramDatei
+	$fehler++
+}
+
+if ($jahr -eq $null-or $jahr -eq "") {
+	'Parameter "Jahr" nicht angegeben' 
+	$fehler++
+}
+
+if ($fehler -gt 0) {
+	exit
+}
+# Ende Parameter überprüfen -----------------------------
+
+# Parameterdatei einlesen und Datenpfade URLs und Login-Daten für SENEC-Homepage setzen.
+[xml]$datenpfade = Get-Content $ParamDatei
+$datenPfad = $datenpfade.dataPathes.folders.data
+
 $datensatz = [Datensatz]::new()
 [DateTime]$vorZeitstempel = Get-Date
 [DateTime]$Zeitstempel = Get-Date
@@ -67,8 +91,8 @@ $datensatz = [Datensatz]::new()
 $zahlenformat = (get-culture).numberformat
 $zeitformat = (Get-Culture).DateTimeFormat
 
-# Jahresdaten einlesen
-$datenPfad = "C:\Daten\Anwendungen\PhotovoltaikDaten\"
+# Dateien definieren: <Datenpfad aus xml-Datei>\jahr<Jahr aus Parameter>\jahr-<Jahr aus Parameter>.csv bzw
+#                     <Datenpfad aus xml-Datei>\jahr<Jahr aus Parameter>\jahr-<Jahr aus Parameter>MitGweichtung.csv
 $jahresdatei = $datenPfad + "Jahr" + $jahr + "\" + "jahr-" + $jahr + ".csv"
 $jahresDateiMitGewichtung = $datenPfad + "jahr" + $Jahr  + "\" + "jahr-" + $jahr + "MitGewichtung.csv"
 
@@ -92,7 +116,7 @@ $spaltenUeberschriften = ($jahresDaten[0] -replace "\[.*?\]|\-" , "") -replace "
 $spaltenUeberschriften = $spaltenUeberschriften -replace "ä" , "ae"
 $spaltenUeberschriften += ";Gewichtung"
 #$spaltenUeberschriften | Out-File $jahresDateiMitGewichtung
-$gewichtet.Add($spaltenUeberschriften)
+$index = $gewichtet.Add($spaltenUeberschriften)
 
 # erster Datensatz wird mit 5 Minuten veranschlagt
 $datensatz = datensatzSplitten -textDatensatz $jahresDaten[1]
@@ -103,7 +127,7 @@ if ($datensatz -eq $null) {
 $jahresDaten[1] + ";" + (300.0 / 3600.0).ToString($zahlenformat) | Out-File $jahresDateiMitGewichtung -Append
 $vorZeitstempel = $datensatz.zeitstempel
 
-"Anzahl Datensätze = $jahresDaten.Length"
+"Anzahl Datensätze = $($jahresDaten.Length)"
 foreach ($zeile in $jahresDaten[2..($jahresDaten.Length-1)]) {
 	if ($zeile -notlike "Uhrzeit*"){
 		$datensatz = datensatzSplitten -textDatensatz $zeile
@@ -123,13 +147,13 @@ foreach ($zeile in $jahresDaten[2..($jahresDaten.Length-1)]) {
 				$verhaeltnis = [Double](([timespan]($zwischenZeitstempel - $vorZeitstempel)).TotalSeconds)/ `
 							   [Double](([timespan]($datensatz.zeitstempel - $vorZeitstempel)).TotalSeconds)
 				[String]$zwischenzeile = ([String]::Join(";",$zeile1)) + ";" + ($gewichtung * $verhaeltnis).ToString($zahlenformat)
-				$gewichtet.Add($zwischenzeile)
+				$index = $gewichtet.Add($zwischenzeile)
 				$verhaeltnis = 1.0 - $verhaeltnis
 			}
 			
 			$zeile = $zeile + ";" + ($gewichtung * $verhaeltnis).ToString($zahlenformat)
 			#$zeile | Out-File $JahresdateiMitGewichtung -Append
-			$gewichtet.Add($zeile)
+			$index = $gewichtet.Add($zeile)
 			$vorZeitstempel = $datensatz.zeitStempel;
 		}
 	}
